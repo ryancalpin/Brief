@@ -1,0 +1,55 @@
+# Xcode
+*.xcodeproj/project.xcworkspace/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcworkspace/xcshareddata/swiftpm/
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.xcarchive
+
+# Swift Package Manager
+.build/
+*.resolved
+.swiftpm/
+
+# XcodeGen
+# (project.yml is checked in, generated .xcodeproj is not)
+Brief.xcodeproj/
+
+# CocoaPods (not used, but just in case)
+Pods/
+Podfile.lock
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Simulator
+*.simulator
+
+# Secrets (NEVER commit API keys)
+Secrets.swift
+*.env
+Secrets/
+
+# Build output
+build/
+
+# Code coverage
+*.gcno
+*.gcda
+*.profdata
+
+# Test results
+TestResults/
