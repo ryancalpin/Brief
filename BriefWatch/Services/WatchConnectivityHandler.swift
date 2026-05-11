@@ -11,9 +11,10 @@ final class WatchConnectivityHandler: NSObject, ObservableObject, WCSessionDeleg
     @Published var isReachable = false
     @Published var recentItems: [SharedBriefItem] = []
     @Published var lastProcessingResult: SharedBriefItem?
-    @Published var processingAck: Bool = false    // iPhone confirmed processing
+    @Published var processingAck: Bool = false
 
     private let session = WCSession.default
+    private let buffer = WatchLocalBuffer.shared
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .iso8601
@@ -35,23 +36,15 @@ final class WatchConnectivityHandler: NSObject, ObservableObject, WCSessionDeleg
             "transcript": transcript
         ]
         if session.isReachable {
-            session.sendMessage(message, replyHandler: { [weak self] reply in
-                DispatchQueue.main.async {
-                    self?.processingAck = true
-                }
-            }, errorHandler: { [weak self] error in
-                // Fallback: store in App Group for background pick-up
-                self?.storeTranscriptInAppGroup(transcript)
+            session.sendMessage(message, replyHandler: { [weak self] _ in
+                DispatchQueue.main.async { self?.processingAck = true }
+            }, errorHandler: { [weak self] _ in
+                self?.buffer.enqueue(transcript: transcript)
             })
         } else {
-            // Phone not reachable, store for later
-            storeTranscriptInAppGroup(transcript)
+            buffer.enqueue(transcript: transcript)
             session.transferUserInfo(message)
         }
-    }
-
-    private func storeTranscriptInAppGroup(_ transcript: String) {
-        AppGroup.defaults.set(transcript, forKey: AppGroupKey.pendingTranscript)
     }
 
     // MARK: - WCSessionDelegate
@@ -68,13 +61,21 @@ final class WatchConnectivityHandler: NSObject, ObservableObject, WCSessionDeleg
     func sessionReachabilityDidChange(_ session: WCSession) {
         DispatchQueue.main.async {
             self.isReachable = session.isReachable
+            if session.isReachable {
+                self.buffer.drain(session: session)
+            }
+        }
+    }
+
+    // Receive audio data from iPhone for InnerVoice playback
+    func session(_ session: WCSession, didReceiveMessageData data: Data) {
+        Task { @MainActor in
+            await WatchInnerVoiceService.shared.speak(data, text: "")
         }
     }
 
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
-        DispatchQueue.main.async {
-            self.parseContext(applicationContext)
-        }
+        DispatchQueue.main.async { self.parseContext(applicationContext) }
     }
 
     func session(_ session: WCSession,
@@ -87,16 +88,11 @@ final class WatchConnectivityHandler: NSObject, ObservableObject, WCSessionDeleg
     }
 
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
-        DispatchQueue.main.async {
-            self.handleMessage(message)
-        }
+        DispatchQueue.main.async { self.handleMessage(message) }
     }
 
-    func session(_ session: WCSession,
-                 didReceiveUserInfo userInfo: [String: Any] = [:]) {
-        DispatchQueue.main.async {
-            self.parseContext(userInfo)
-        }
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        DispatchQueue.main.async { self.parseContext(userInfo) }
     }
 
     // MARK: - Message handlers
@@ -113,6 +109,11 @@ final class WatchConnectivityHandler: NSObject, ObservableObject, WCSessionDeleg
             }
         case "recordingAck":
             processingAck = message["success"] as? Bool ?? false
+        case "innerVoiceMode":
+            if let raw = message["mode"] as? String,
+               let mode = InnerVoiceMode(rawValue: raw) {
+                WatchInnerVoiceService.shared.mode = mode
+            }
         default:
             break
         }

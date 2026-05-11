@@ -31,13 +31,15 @@ final class RecordingViewModel {
     private let voiceService: VoiceRecordingService
     private let aiService: AIParsingService
     private let eventKitService: EventKitService
+    private let ekSyncService = EventKitSyncService()
+    private let openRouter = OpenRouterService.shared
+    private let innerVoice = InnerVoiceService.shared
     private let notesService: NotesExportService
     private let activityManager: RecordingActivityManager
     private let watchService: WatchConnectivityService
     private var modelContext: ModelContext?
 
     private var durationTimer: Timer?
-    private var transcriptStream: AsyncStream<String>?
 
     init(
         voiceService: VoiceRecordingService,
@@ -47,12 +49,12 @@ final class RecordingViewModel {
         activityManager: RecordingActivityManager = .init(),
         watchService: WatchConnectivityService = .shared
     ) {
-        self.voiceService = voiceService
-        self.aiService = aiService
+        self.voiceService    = voiceService
+        self.aiService       = aiService
         self.eventKitService = eventKitService
-        self.notesService = notesService
+        self.notesService    = notesService
         self.activityManager = activityManager
-        self.watchService = watchService
+        self.watchService    = watchService
     }
 
     func setModelContext(_ context: ModelContext) {
@@ -63,26 +65,19 @@ final class RecordingViewModel {
 
     func startRecording() async {
         guard phase == .idle else { return }
-
-        // Request permissions on first use
         await voiceService.requestPermissions()
         guard voiceService.canRecord else {
             phase = .error(VoiceRecordingError.permissionDenied)
             return
         }
-
         do {
             phase = .recording
             activityManager.startActivity()
             startDurationTimer()
-
             let stream = try await voiceService.startRecording()
-
             if SettingsViewModel.shared.hapticFeedback {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             }
-
-            // Consume transcript stream
             for await partial in stream {
                 liveTranscript = partial
                 activityManager.updateTranscript(partial, duration: recordingDuration)
@@ -96,20 +91,16 @@ final class RecordingViewModel {
 
     func stopRecording() async {
         guard case .recording = phase else { return }
-
         stopDurationTimer()
         let finalTranscript = await voiceService.stopRecording()
-
         if SettingsViewModel.shared.hapticFeedback {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
-
         guard !finalTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             phase = .idle
             activityManager.endActivity(success: false, finalTitle: "Nothing recorded")
             return
         }
-
         await processTranscript(finalTranscript)
     }
 
@@ -130,27 +121,50 @@ final class RecordingViewModel {
         await processTranscript(transcript)
     }
 
-    // MARK: - AI processing
+    // MARK: - AI processing (6-step flow)
 
     private func processTranscript(_ transcript: String) async {
         phase = .processing
         activityManager.showProcessing()
 
         do {
+            // Step 1: Determine sessionID
+            let sessionID = resolveSessionID()
+
+            // Step 2: Parse transcript
             let result = try await aiService.parse(transcript: transcript)
+
+            // Step 3: Create BriefItem, set sessionID, save to SwiftData
             let item = result.toBriefItem(rawTranscript: transcript,
-                                          aiProvider: aiService.preferredProvider.rawValue)
-
-            // Apply user's default destination if AI returned .briefOnly and user has a preference
-            if item.destinationRaw == BriefDestination.briefOnly.rawValue {
-                item.destinationRaw = SettingsViewModel.shared.defaultDestination.rawValue
-            }
-
-            if SettingsViewModel.shared.autoSyncToApple {
-                await syncToApple(item)
-            }
-
+                                          aiProvider: "openrouter")
+            item.sessionID = sessionID
             saveLocally(item)
+
+            // Step 4: Mirror to Apple Reminders if enabled
+            let settings = SettingsViewModel.shared
+            if result.itemType == .reminder && settings.remindersSyncEnabled {
+                item.ekSyncEnabled = true
+                if let ctx = modelContext {
+                    try? await ekSyncService.mirror(item, context: ctx)
+                }
+            }
+
+            // Step 5: Conversational reply if isConversational and OpenRouter configured
+            if result.isConversational && openRouter.isConfigured {
+                let history = buildConvoHistory(sessionID: sessionID, excluding: item)
+                if let reply = try? await openRouter.converse(
+                    history: history,
+                    newMessage: transcript
+                ) {
+                    item.aiResponse = reply
+                    try? modelContext?.save()
+                }
+            }
+
+            // Step 6: Speak response via InnerVoiceService
+            let textToSpeak = item.aiResponse ?? confirmationPhrase(for: result.itemType)
+            await innerVoice.speak(textToSpeak)
+
             phase = .reviewing(item)
             activityManager.endActivity(success: true, finalTitle: item.title)
             watchService.syncRecentItems(SharedDefaults.shared.recentItems)
@@ -161,45 +175,63 @@ final class RecordingViewModel {
         }
     }
 
-    // MARK: - Apple integration
+    // MARK: - Session ID
 
-    private func syncToApple(_ item: BriefItem) async {
-        do {
-            switch item.destination {
-            case .reminders:
-                if !eventKitService.hasRemindersAccess {
-                    try await eventKitService.requestRemindersAccess()
-                }
-                let identifier = try await eventKitService.createReminder(from: item)
-                item.externalIdentifier = identifier
-                item.syncedToApple = true
+    private func resolveSessionID() -> UUID {
+        guard let ctx = modelContext else { return UUID() }
+        let descriptor = FetchDescriptor<BriefItem>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        let recent = (try? ctx.fetch(descriptor))?.first
+        if let last = recent,
+           Date().timeIntervalSince(last.createdAt) < 5 * 60,
+           let sid = last.sessionID {
+            return sid
+        }
+        return UUID()
+    }
 
-            case .calendar:
-                if !eventKitService.hasCalendarAccess {
-                    try await eventKitService.requestCalendarAccess()
-                }
-                let identifier = try await eventKitService.createCalendarEvent(from: item)
-                item.externalIdentifier = identifier
-                item.syncedToApple = true
+    // MARK: - Conversation history
 
-            case .notes:
-                // Notes export happens via share sheet on user confirmation
-                item.syncedToApple = false
-
-            case .briefOnly:
-                break
+    private func buildConvoHistory(sessionID: UUID, excluding item: BriefItem) -> [ConvoMessage] {
+        guard let ctx = modelContext else { return [] }
+        var descriptor = FetchDescriptor<BriefItem>(
+            predicate: #Predicate { $0.itemTypeRaw == "convo" },
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        descriptor.fetchLimit = 10
+        let allConvo = (try? ctx.fetch(descriptor)) ?? []
+        let sessionItems = allConvo.filter { $0.sessionID == sessionID && $0.id != item.id }
+        let last5 = Array(sessionItems.suffix(5))
+        return last5.flatMap { convoItem -> [ConvoMessage] in
+            var msgs: [ConvoMessage] = [
+                ConvoMessage(role: "user", content: convoItem.rawTranscript)
+            ]
+            if let reply = convoItem.aiResponse {
+                msgs.append(ConvoMessage(role: "assistant", content: reply))
             }
-        } catch {
-            // Non-fatal: item saved locally, sync can be retried
-            print("Brief: Apple sync failed: \(error)")
+            return msgs
         }
     }
 
+    // MARK: - Confirmation phrases
+
+    private func confirmationPhrase(for itemType: BriefItemType) -> String {
+        switch itemType {
+        case .reminder:      return "Reminder saved."
+        case .note:          return "Note captured."
+        case .calendarEvent: return "Calendar event saved."
+        case .list:          return "List saved."
+        case .convo:         return "Got it."
+        case .generic:       return "Item captured."
+        }
+    }
+
+    // MARK: - Apple integration (legacy path — used by manual sync actions)
+
     func syncItemToNotes(_ item: BriefItem) {
-        notesService.openNewNote(
-            withTitle: item.title,
-            body: notesService.formatNoteContent(from: item)
-        )
+        notesService.openNewNote(withTitle: item.title,
+                                 body: notesService.formatNoteContent(from: item))
         item.syncedToApple = true
     }
 
@@ -212,6 +244,9 @@ final class RecordingViewModel {
     }
 
     func deleteItem(_ item: BriefItem) {
+        if item.ekSyncEnabled, let _ = item.ekIdentifier {
+            Task { try? await ekSyncService.delete(item) }
+        }
         modelContext?.delete(item)
         try? modelContext?.save()
     }
@@ -219,10 +254,12 @@ final class RecordingViewModel {
     func toggleComplete(_ item: BriefItem) {
         item.isCompleted.toggle()
         item.updatedAt = Date()
-        if let id = item.externalIdentifier, item.destination == .reminders {
-            Task {
-                try? await eventKitService.completeReminder(identifier: id)
-            }
+        if item.isCompleted { item.completedAt = Date() }
+        else                { item.completedAt = nil }
+        if let id = item.ekIdentifier, item.ekSyncEnabled {
+            Task { try? await ekSyncService.complete(item) }
+        } else if let id = item.externalIdentifier, item.destination == .reminders {
+            Task { try? await eventKitService.completeReminder(identifier: id) }
         }
         try? modelContext?.save()
         SharedDefaults.shared.updateItem(item.toShared())
@@ -238,9 +275,7 @@ final class RecordingViewModel {
     private func startDurationTimer() {
         recordingDuration = 0
         durationTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.recordingDuration += 1
-            }
+            Task { @MainActor in self?.recordingDuration += 1 }
         }
     }
 

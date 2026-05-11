@@ -1,5 +1,5 @@
 // SettingsViewModel.swift
-// Manages app settings — AI provider, API keys, permissions, defaults
+// Manages app settings — AI, voice, sync, permissions
 
 import Foundation
 import Observation
@@ -8,24 +8,45 @@ import Observation
 @MainActor
 final class SettingsViewModel {
 
-    // Singleton for access by AIParsingService
     static let shared = SettingsViewModel()
 
     // MARK: - AI Settings
 
+    // OpenRouter API key (BYOK mode) — stored in Keychain
+    var openRouterKey: String = "" {
+        didSet { KeychainService.shared.write(key: .openRouterKey, value: openRouterKey) }
+    }
+
+    var fastModel: String = "google/gemini-flash-2.5" {
+        didSet { save() }
+    }
+
+    var deepModel: String = "anthropic/claude-sonnet-4-6" {
+        didSet { save() }
+    }
+
+    // Legacy fields retained for backward compatibility with existing data
     var preferredProvider: AIProviderChoice = .appleIntelligence {
         didSet { save() }
     }
 
-    var openAIKey: String = "" {
-        didSet { saveAPIKeys() }
+    // MARK: - Voice Responses
+
+    var innerVoiceMode: InnerVoiceMode = .hapticsOnly {
+        didSet { save(); applyInnerVoiceMode() }
     }
 
-    var anthropicKey: String = "" {
-        didSet { saveAPIKeys() }
+    var innerVoiceVoiceName: String = "Calm" {
+        didSet { save(); InnerVoiceService.shared.setVoice(named: innerVoiceVoiceName) }
     }
 
-    var openAIModel: String = "gpt-4o-mini" {
+    // MARK: - Apple Integrations
+
+    var remindersSyncEnabled: Bool = false {
+        didSet { save() }
+    }
+
+    var medicalVocabularyEnabled: Bool = false {
         didSet { save() }
     }
 
@@ -39,7 +60,7 @@ final class SettingsViewModel {
         didSet { save() }
     }
 
-    // MARK: - Interface Settings
+    // MARK: - Interface
 
     var hapticFeedback: Bool = true {
         didSet { save() }
@@ -58,73 +79,107 @@ final class SettingsViewModel {
     // MARK: - Persistence keys
 
     private enum Key {
-        static let preferredProvider = "settings.preferredProvider"
-        static let openAIModel       = "settings.openAIModel"
-        static let defaultDest       = "settings.defaultDestination"
-        static let autoSync          = "settings.autoSync"
-        static let haptic            = "settings.haptic"
-        static let showTranscript    = "settings.showTranscript"
-        static let onboarding        = "settings.onboarding"
-        // API keys go through App Group defaults (not Keychain in this sample;
-        // production apps should use Keychain or SecureField with Keychain storage)
-        static let openAIKey         = "settings.openAIKey"
-        static let anthropicKey      = "settings.anthropicKey"
+        static let preferredProvider  = "settings.preferredProvider"
+        static let fastModel          = "settings.fastModel"
+        static let deepModel          = "settings.deepModel"
+        static let defaultDest        = "settings.defaultDestination"
+        static let autoSync           = "settings.autoSync"
+        static let haptic             = "settings.haptic"
+        static let showTranscript     = "settings.showTranscript"
+        static let onboarding         = "settings.onboarding"
+        static let innerVoiceMode     = "settings.innerVoiceMode"
+        static let innerVoiceVoice    = "settings.innerVoiceVoice"
+        static let reminderSync       = "settings.remindersSyncEnabled"
+        static let medicalVocab       = "settings.medicalVocabulary"
     }
 
     private let defaults = AppGroup.defaults
 
-    init() {
-        load()
-    }
+    init() { load() }
 
     // MARK: - Load / Save
 
     func load() {
-        if let raw = defaults.string(forKey: Key.preferredProvider),
-           let provider = AIProviderChoice(rawValue: raw) {
-            preferredProvider = provider
-        }
-        openAIModel = defaults.string(forKey: Key.openAIModel) ?? "gpt-4o-mini"
-        if let raw = defaults.string(forKey: Key.defaultDest),
-           let dest = BriefDestination(rawValue: raw) {
-            defaultDestination = dest
-        }
-        autoSyncToApple = defaults.object(forKey: Key.autoSync) as? Bool ?? true
-        hapticFeedback   = defaults.object(forKey: Key.haptic) as? Bool ?? true
-        showTranscriptDuringRecording = defaults.object(forKey: Key.showTranscript) as? Bool ?? true
-        hasCompletedOnboarding = defaults.bool(forKey: Key.onboarding)
+        // Migrate legacy API keys from UserDefaults to Keychain (one-time)
+        migrateLegacyKeys()
 
-        // API keys (use Keychain in production)
-        openAIKey    = defaults.string(forKey: Key.openAIKey) ?? ""
-        anthropicKey = defaults.string(forKey: Key.anthropicKey) ?? ""
+        // Load OpenRouter key from Keychain
+        openRouterKey = KeychainService.shared.read(key: .openRouterKey) ?? ""
+
+        if let raw = defaults.string(forKey: Key.preferredProvider),
+           let p = AIProviderChoice(rawValue: raw) { preferredProvider = p }
+
+        fastModel = defaults.string(forKey: Key.fastModel) ?? "google/gemini-flash-2.5"
+        deepModel = defaults.string(forKey: Key.deepModel) ?? "anthropic/claude-sonnet-4-6"
+
+        if let raw = defaults.string(forKey: Key.defaultDest),
+           let d = BriefDestination(rawValue: raw) { defaultDestination = d }
+
+        autoSyncToApple              = defaults.object(forKey: Key.autoSync)        as? Bool ?? true
+        hapticFeedback               = defaults.object(forKey: Key.haptic)          as? Bool ?? true
+        showTranscriptDuringRecording = defaults.object(forKey: Key.showTranscript) as? Bool ?? true
+        hasCompletedOnboarding       = defaults.bool(forKey: Key.onboarding)
+        remindersSyncEnabled         = defaults.bool(forKey: Key.reminderSync)
+        medicalVocabularyEnabled     = defaults.bool(forKey: Key.medicalVocab)
+
+        if let raw = defaults.string(forKey: Key.innerVoiceMode),
+           let m = InnerVoiceMode(rawValue: raw) { innerVoiceMode = m }
+        innerVoiceVoiceName = defaults.string(forKey: Key.innerVoiceVoice) ?? "Calm"
+
+        applyInnerVoiceMode()
+        InnerVoiceService.shared.setVoice(named: innerVoiceVoiceName)
     }
 
     private func save() {
         defaults.set(preferredProvider.rawValue, forKey: Key.preferredProvider)
-        defaults.set(openAIModel, forKey: Key.openAIModel)
+        defaults.set(fastModel,                  forKey: Key.fastModel)
+        defaults.set(deepModel,                  forKey: Key.deepModel)
         defaults.set(defaultDestination.rawValue, forKey: Key.defaultDest)
-        defaults.set(autoSyncToApple, forKey: Key.autoSync)
-        defaults.set(hapticFeedback, forKey: Key.haptic)
+        defaults.set(autoSyncToApple,            forKey: Key.autoSync)
+        defaults.set(hapticFeedback,             forKey: Key.haptic)
         defaults.set(showTranscriptDuringRecording, forKey: Key.showTranscript)
-        defaults.set(hasCompletedOnboarding, forKey: Key.onboarding)
+        defaults.set(hasCompletedOnboarding,     forKey: Key.onboarding)
+        defaults.set(innerVoiceMode.rawValue,    forKey: Key.innerVoiceMode)
+        defaults.set(innerVoiceVoiceName,        forKey: Key.innerVoiceVoice)
+        defaults.set(remindersSyncEnabled,       forKey: Key.reminderSync)
+        defaults.set(medicalVocabularyEnabled,   forKey: Key.medicalVocab)
     }
 
-    private func saveAPIKeys() {
-        // TODO: Replace with Keychain storage in production
-        defaults.set(openAIKey, forKey: Key.openAIKey)
-        defaults.set(anthropicKey, forKey: Key.anthropicKey)
+    // Migrate existing API keys from UserDefaults → Keychain (run once on first load)
+    private func migrateLegacyKeys() {
+        let legacyOAI = defaults.string(forKey: "settings.openAIKey") ?? ""
+        let legacyAnt = defaults.string(forKey: "settings.anthropicKey") ?? ""
+        if !legacyOAI.isEmpty {
+            KeychainService.shared.write(key: .openAIKey, value: legacyOAI)
+            defaults.removeObject(forKey: "settings.openAIKey")
+        }
+        if !legacyAnt.isEmpty {
+            KeychainService.shared.write(key: .anthropicKey, value: legacyAnt)
+            defaults.removeObject(forKey: "settings.anthropicKey")
+        }
+    }
+
+    // MARK: - Apply settings
+
+    private func applyInnerVoiceMode() {
+        InnerVoiceService.shared.mode = innerVoiceMode
     }
 
     // MARK: - Validation
 
-    var isOpenAIKeyValid: Bool { openAIKey.hasPrefix("sk-") && openAIKey.count > 20 }
-    var isAnthropicKeyValid: Bool { anthropicKey.hasPrefix("sk-ant-") && anthropicKey.count > 20 }
+    var isOpenRouterKeyValid: Bool {
+        !openRouterKey.isEmpty && openRouterKey.count > 10
+    }
 
-    func clearAPIKey(for provider: AIProviderChoice) {
-        switch provider {
-        case .openAI:    openAIKey = ""
-        case .anthropic: anthropicKey = ""
-        default: break
-        }
+    // Legacy validation kept for any remaining references
+    var isOpenAIKeyValid: Bool { false }
+    var isAnthropicKeyValid: Bool { false }
+    var openAIKey: String { "" }
+    var anthropicKey: String { "" }
+    var openAIModel: String { fastModel }
+
+    func clearOpenRouterKey() {
+        openRouterKey = ""
+        KeychainService.shared.delete(key: .openRouterKey)
     }
 }

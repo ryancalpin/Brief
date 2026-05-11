@@ -32,6 +32,21 @@ final class BriefItem {
     var tags: [String]
     var aiProviderUsed: String?
 
+    // AI conversation fields
+    var aiResponse: String?          // AI reply text (nil for reminders/calendar/notes)
+    var sessionID: UUID?             // groups captures within 5-minute windows
+    var aiSummary: String?           // AI-generated summary for search (v1.1)
+    var isConversational: Bool = false
+
+    // EventKit sync fields (separate from legacy externalIdentifier)
+    var ekIdentifier: String?        // EKReminder ID — nil = in-app only
+    var ekSyncEnabled: Bool = false  // mirrors to Apple Reminders if true
+
+    // Edit tracking
+    var completedAt: Date?
+    var isEdited: Bool = false
+    var syncError: String?          // last EK sync error message, nil if clean
+
     init(
         rawTranscript: String,
         title: String,
@@ -93,12 +108,13 @@ final class BriefItem {
 
 // MARK: - Enums (defined here for iOS target; SharedBriefItem.SharedItemType is for cross-target use)
 
-enum BriefItemType: String, CaseIterable {
+enum BriefItemType: String, CaseIterable, Codable {
     case reminder
     case note
     case calendarEvent = "calendarEvent"
     case list
     case generic
+    case convo          // one turn in an AI conversation
 
     var displayName: String {
         switch self {
@@ -107,6 +123,7 @@ enum BriefItemType: String, CaseIterable {
         case .calendarEvent: return "Calendar Event"
         case .list:          return "List"
         case .generic:       return "Item"
+        case .convo:         return "Conversation"
         }
     }
 
@@ -117,6 +134,7 @@ enum BriefItemType: String, CaseIterable {
         case .calendarEvent: return "calendar"
         case .list:          return "list.bullet"
         case .generic:       return "sparkles"
+        case .convo:         return "bubble.left.and.bubble.right"
         }
     }
 }

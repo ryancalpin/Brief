@@ -1,9 +1,11 @@
 // AIParsingService.swift
-// Orchestrates AI provider selection and parses voice transcripts into structured data
+// Orchestrates the AI provider chain: OpenRouter → Apple Intelligence → Rule-based
 
 import Foundation
 import Observation
 
+// AIProviderChoice kept for backward-compatibility with SettingsViewModel/SettingsView.
+// It no longer drives provider selection — the chain auto-detects the best available provider.
 enum AIProviderChoice: String, CaseIterable {
     case appleIntelligence = "appleIntelligence"
     case openAI            = "openAI"
@@ -19,9 +21,7 @@ enum AIProviderChoice: String, CaseIterable {
         }
     }
 
-    var requiresAPIKey: Bool {
-        self == .openAI || self == .anthropic
-    }
+    var requiresAPIKey: Bool { self == .openAI || self == .anthropic }
 }
 
 @Observable
@@ -31,97 +31,52 @@ final class AIParsingService {
     var isProcessing = false
     var lastError: Error?
 
-    private let appleIntelligenceService = AppleIntelligenceService()
-    private let byokService = BYOKService()
-
-    // Injected from SettingsViewModel
-    var openAIKey: String = ""
-    var anthropicKey: String = ""
-    var preferredProvider: AIProviderChoice = .appleIntelligence
+    private let openRouter        = OpenRouterService.shared
+    private let appleIntelligence = AppleIntelligenceService()
+    private let byokService       = BYOKService()
 
     // MARK: - Parse
 
+    // Provider chain:
+    // 1. OpenRouter (via APIGatewayService) — if configured
+    // 2. Apple Intelligence — silent pre-parse on supported devices (iOS 26+)
+    // 3. Rule-based — always-on fallback
     func parse(transcript: String) async throws -> AIParseResult {
         isProcessing = true
         lastError = nil
         defer { isProcessing = false }
 
-        let provider = resolveProvider()
-
-        do {
-            switch provider {
-            case .appleIntelligence:
-                return try await appleIntelligenceService.parse(transcript: transcript)
-
-            case .openAI:
-                guard !openAIKey.isEmpty else { throw BYOKError.invalidAPIKey("OpenAI") }
-                return try await byokService.parseWithOpenAI(transcript: transcript, apiKey: openAIKey)
-
-            case .anthropic:
-                guard !anthropicKey.isEmpty else { throw BYOKError.invalidAPIKey("Anthropic") }
-                return try await byokService.parseWithAnthropic(transcript: transcript, apiKey: anthropicKey)
-
-            case .ruleBased:
-                return byokService.parseRuleBased(transcript: transcript)
+        // 1. OpenRouter
+        if openRouter.isConfigured {
+            do {
+                return try await openRouter.parse(transcript: transcript)
+            } catch {
+                lastError = error
             }
-        } catch let error as AppleIntelligenceError where error == .notAvailable {
-            // Gracefully fall back if Apple Intelligence isn't available
-            return await fallback(transcript: transcript)
-        } catch {
-            lastError = error
-            // Final fallback: rule-based parser never fails
-            return byokService.parseRuleBased(transcript: transcript)
         }
-    }
 
-    // MARK: - Private
-
-    private func resolveProvider() -> AIProviderChoice {
-        switch preferredProvider {
-        case .appleIntelligence:
-            if AppleIntelligenceService.isAvailable { return .appleIntelligence }
-            return fallbackProviderIfNeeded()
-
-        case .openAI:
-            if !openAIKey.isEmpty { return .openAI }
-            return fallbackProviderIfNeeded()
-
-        case .anthropic:
-            if !anthropicKey.isEmpty { return .anthropic }
-            return fallbackProviderIfNeeded()
-
-        case .ruleBased:
-            return .ruleBased
-        }
-    }
-
-    private func fallbackProviderIfNeeded() -> AIProviderChoice {
-        if !openAIKey.isEmpty { return .openAI }
-        if !anthropicKey.isEmpty { return .anthropic }
-        return .ruleBased
-    }
-
-    private func fallback(transcript: String) async -> AIParseResult {
-        if !openAIKey.isEmpty {
-            if let result = try? await byokService.parseWithOpenAI(transcript: transcript, apiKey: openAIKey) {
+        // 2. Apple Intelligence (silent, iOS 26+, no user-facing provider choice)
+        if AppleIntelligenceService.isAvailable {
+            if let result = try? await appleIntelligence.parse(transcript: transcript) {
                 return result
             }
         }
-        if !anthropicKey.isEmpty {
-            if let result = try? await byokService.parseWithAnthropic(transcript: transcript, apiKey: anthropicKey) {
-                return result
-            }
-        }
+
+        // 3. Rule-based fallback — never throws
         return byokService.parseRuleBased(transcript: transcript)
     }
 
-    // MARK: - Available providers (for Settings UI)
+    var isConfigured: Bool { openRouter.isConfigured }
+
+    // MARK: - Available providers (for Settings UI — legacy, not used for routing)
+
+    var preferredProvider: AIProviderChoice = .appleIntelligence  // kept for SettingsViewModel compat
+    var openAIKey: String  = ""  // kept for SettingsViewModel compat
+    var anthropicKey: String = "" // kept for SettingsViewModel compat
 
     var availableProviders: [AIProviderChoice] {
         var providers: [AIProviderChoice] = []
         if AppleIntelligenceService.isAvailable { providers.append(.appleIntelligence) }
-        if !openAIKey.isEmpty { providers.append(.openAI) }
-        if !anthropicKey.isEmpty { providers.append(.anthropic) }
         providers.append(.ruleBased)
         return providers
     }
@@ -132,10 +87,8 @@ extension AppleIntelligenceError: Equatable {
         switch (lhs, rhs) {
         case (.notAvailable, .notAvailable),
              (.modelUnavailable, .modelUnavailable),
-             (.invalidResponse, .invalidResponse):
-            return true
-        default:
-            return false
+             (.invalidResponse, .invalidResponse): return true
+        default: return false
         }
     }
 }

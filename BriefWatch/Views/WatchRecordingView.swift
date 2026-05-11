@@ -2,28 +2,23 @@
 // Push-to-talk recording interface for Apple Watch
 
 import SwiftUI
+import WatchKit
 
 struct WatchRecordingView: View {
     @EnvironmentObject var vm: WatchViewModel
-    @State private var isHolding = false
+    @ObservedObject private var buffer = WatchLocalBuffer.shared
 
     var body: some View {
         ZStack {
-            // Background
             Color(.black).ignoresSafeArea()
 
             VStack(spacing: 8) {
                 switch vm.phase {
-                case .idle:
-                    idleView
-                case .recording:
-                    recordingView
-                case .sending, .waitingForResult:
-                    sendingView
-                case .done(let item):
-                    doneView(item: item)
-                case .error(let error):
-                    errorView(error: error)
+                case .idle:            idleView
+                case .recording:       recordingView
+                case .sending, .waitingForResult: sendingView
+                case .done(let item):  doneView(item: item)
+                case .error(let err):  errorView(error: err)
                 }
             }
         }
@@ -43,13 +38,16 @@ struct WatchRecordingView: View {
                 .font(.headline)
                 .multilineTextAlignment(.center)
 
+            if buffer.pendingCount > 0 {
+                pendingBadge
+            }
+
             recordButton
         }
     }
 
     private var recordingView: some View {
         VStack(spacing: 8) {
-            // Live transcript (max 3 lines)
             if !vm.liveTranscript.isEmpty {
                 Text(vm.liveTranscript)
                     .font(.caption2)
@@ -62,11 +60,9 @@ struct WatchRecordingView: View {
                     .foregroundStyle(.red)
                     .symbolEffect(.pulse)
             }
-
             Text(vm.formattedDuration)
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.red)
-
             recordButton
         }
     }
@@ -76,10 +72,7 @@ struct WatchRecordingView: View {
             ProgressView()
                 .progressViewStyle(.circular)
                 .tint(.purple)
-
-            Text(vm.phase == .sending as? Bool ?? false
-                 ? "Sending to iPhone…"
-                 : "Processing…")
+            Text("Processing…")
                 .font(.caption)
                 .multilineTextAlignment(.center)
         }
@@ -90,23 +83,18 @@ struct WatchRecordingView: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 32))
                 .foregroundStyle(.green)
-
             Text(item.title)
                 .font(.caption.bold())
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
-
             Text("→ \(item.destination.displayName)")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-
             Button("Done") { vm.dismiss() }
                 .font(.caption)
                 .foregroundStyle(.purple)
         }
-        .onAppear {
-            WKInterfaceDevice.current().play(.success)
-        }
+        .onAppear { WKInterfaceDevice.current().play(.success) }
     }
 
     private func errorView(error: Error) -> some View {
@@ -125,23 +113,30 @@ struct WatchRecordingView: View {
         .onAppear { WKInterfaceDevice.current().play(.failure) }
     }
 
+    // MARK: - Pending buffer badge (informational only)
+
+    private var pendingBadge: some View {
+        Text("\(buffer.pendingCount) pending")
+            .font(.caption2.bold())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color.orange.opacity(0.85), in: Capsule())
+            .foregroundStyle(.white)
+    }
+
     // MARK: - Record button
 
     private var recordButton: some View {
         Button {
             Task {
-                if vm.isRecording {
-                    await vm.stopRecording()
-                } else {
-                    await vm.startRecording()
-                }
+                if vm.isRecording { await vm.stopRecording() }
+                else              { await vm.startRecording() }
             }
         } label: {
             ZStack {
                 Circle()
                     .fill(vm.isRecording ? Color.red : Color.purple)
                     .frame(width: 60, height: 60)
-
                 Image(systemName: vm.isRecording ? "stop.fill" : "mic.fill")
                     .font(.title3)
                     .foregroundStyle(.white)
