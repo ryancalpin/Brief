@@ -10,14 +10,18 @@ struct BriefApp: App {
     // MARK: - SwiftData container
 
     let modelContainer: ModelContainer = {
-        let schema = Schema([BriefItem.self])
+        let schema = Schema(versionedSchema: BriefSchemaV1.self)
         let config = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: false,
             cloudKitDatabase: .automatic  // iCloud sync via CloudKit
         )
         do {
-            return try ModelContainer(for: schema, configurations: [config])
+            return try ModelContainer(
+                for: schema,
+                migrationPlan: BriefMigrationPlan.self,
+                configurations: [config]
+            )
         } catch {
             fatalError("Brief: Failed to create ModelContainer: \(error)")
         }
@@ -35,13 +39,7 @@ struct BriefApp: App {
     @State private var showOnboarding = !SettingsViewModel.shared.hasCompletedOnboarding
 
     init() {
-        // Wire up AI service with settings
         let ai = AIParsingService()
-        let settings = SettingsViewModel.shared
-        ai.openAIKey = settings.openAIKey
-        ai.anthropicKey = settings.anthropicKey
-        ai.preferredProvider = settings.preferredProvider
-
         let eventKit = EventKitService()
         let voice = VoiceRecordingService()
 
@@ -68,16 +66,6 @@ struct BriefApp: App {
                 }
                 .onAppear {
                     watchService.activate()
-                    syncSettingsToServices()
-                }
-                .onChange(of: SettingsViewModel.shared.openAIKey) {
-                    aiService.openAIKey = SettingsViewModel.shared.openAIKey
-                }
-                .onChange(of: SettingsViewModel.shared.anthropicKey) {
-                    aiService.anthropicKey = SettingsViewModel.shared.anthropicKey
-                }
-                .onChange(of: SettingsViewModel.shared.preferredProvider) {
-                    aiService.preferredProvider = SettingsViewModel.shared.preferredProvider
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .briefProcessPendingTranscript)) { _ in
                     Task { await recordingVM.processPendingTranscript() }
@@ -92,13 +80,6 @@ struct BriefApp: App {
                     }
                 }
         }
-    }
-
-    private func syncSettingsToServices() {
-        let settings = SettingsViewModel.shared
-        aiService.openAIKey = settings.openAIKey
-        aiService.anthropicKey = settings.anthropicKey
-        aiService.preferredProvider = settings.preferredProvider
     }
 }
 

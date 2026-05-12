@@ -79,21 +79,3 @@ struct RuleBasedParser {
         return 0
     }
 }
-
-// MARK: - Errors (kept for backward compatibility)
-
-enum BYOKError: LocalizedError {
-    case networkError(String)
-    case invalidAPIKey(String)
-    case apiError(String)
-    case invalidResponse
-
-    var errorDescription: String? {
-        switch self {
-        case .networkError(let msg):  return "Network error: \(msg)"
-        case .invalidAPIKey(let p):   return "Invalid \(p) API key. Check your key in Settings."
-        case .apiError(let msg):      return msg
-        case .invalidResponse:        return "The AI service returned an unexpected response."
-        }
-    }
-}

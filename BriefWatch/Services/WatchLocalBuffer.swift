@@ -35,6 +35,8 @@ final class WatchLocalBuffer: ObservableObject {
 
     // Drain all buffered items to iPhone via WatchConnectivity.
     // Call when WCSession.isReachable transitions to true.
+    // On sendMessage failure we fall back to transferUserInfo (queued, persistent)
+    // rather than re-enqueueing — prevents an infinite retry loop.
     func drain(session: WCSession) {
         guard !items.isEmpty, session.activationState == .activated else { return }
         let toSend = items
@@ -49,9 +51,9 @@ final class WatchLocalBuffer: ObservableObject {
                 "recordedAt": ISO8601DateFormatter().string(from: buffered.recordedAt)
             ]
             if session.isReachable {
-                session.sendMessage(message, replyHandler: nil, errorHandler: { [weak self] _ in
-                    // Re-enqueue on send failure
-                    self?.enqueue(transcript: buffered.transcript, recordedAt: buffered.recordedAt)
+                session.sendMessage(message, replyHandler: nil, errorHandler: { _ in
+                    // Hand off to the persistent queue so the system retries for us.
+                    session.transferUserInfo(message)
                 })
             } else {
                 session.transferUserInfo(message)

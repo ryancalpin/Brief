@@ -164,11 +164,9 @@ enum EventKitError: LocalizedError {
         case .permissionDenied(let app):
             return "\(app) access is required. Please enable in Settings → Privacy → \(app)."
         case .itemNotFound:
-            return "The item could not be found in \(app). It may have been deleted."
+            return "The item could not be found. It may have been deleted."
         case .saveFailed(let msg):
             return "Failed to save: \(msg)"
         }
     }
-
-    private var app: String { "" }
 }

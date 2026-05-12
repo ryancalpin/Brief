@@ -5,19 +5,7 @@ import Foundation
 import AVFoundation
 import Observation
 
-enum InnerVoiceMode: String, CaseIterable, Codable {
-    case hapticsOnly  // default — no audio
-    case watchSpeaker // device speaker (on Watch: Watch built-in speaker)
-    case earbuds      // earbuds when connected, else silent
-
-    var displayName: String {
-        switch self {
-        case .hapticsOnly:  return "Haptics only"
-        case .watchSpeaker: return "Device speaker"
-        case .earbuds:      return "Earbuds when connected"
-        }
-    }
-}
+// InnerVoiceMode is defined in Shared/InnerVoiceMode.swift
 
 @Observable
 @MainActor
@@ -32,6 +20,7 @@ final class InnerVoiceService: NSObject {
 
     private override init() {
         super.init()
+        synthesizer.delegate = self
     }
 
     // MARK: - Speak
@@ -115,5 +104,23 @@ final class InnerVoiceService: NSObject {
             return sentences.dropLast().joined(separator: ". ") + "."
         }
         return truncated
+    }
+
+    nonisolated fileprivate func deactivateAudioSession() {
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+}
+
+// MARK: - AVSpeechSynthesizerDelegate
+
+extension InnerVoiceService: AVSpeechSynthesizerDelegate {
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
+                                       didFinish utterance: AVSpeechUtterance) {
+        deactivateAudioSession()
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
+                                       didCancel utterance: AVSpeechUtterance) {
+        deactivateAudioSession()
     }
 }

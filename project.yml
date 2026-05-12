@@ -127,12 +127,50 @@ targets:
       - path: Shared
         group: Shared
 
+    dependencies:
+      - target: BriefWatchWidget
+        embed: true
+        codeSign: true
+
     settings:
       base:
         PRODUCT_NAME: "Brief"
         PRODUCT_BUNDLE_IDENTIFIER: com.brief.watchapp
         INFOPLIST_FILE: BriefWatch/Info.plist
         CODE_SIGN_ENTITLEMENTS: BriefWatch/BriefWatch.entitlements
+        WATCHOS_DEPLOYMENT_TARGET: "11.0"
+      configs:
+        debug:
+          SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+        release:
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
+
+  # ── Apple Watch Widget Extension ───────────────────────────────────────────
+  BriefWatchWidget:
+    type: app-extension
+    platform: watchOS
+    deploymentTarget: "11.0"
+    bundleId: com.brief.watchapp.widget
+    entitlements: BriefWatchWidget/BriefWatchWidget.entitlements
+    info:
+      path: BriefWatchWidget/Info.plist
+
+    sources:
+      - path: BriefWatchWidget
+        excludes:
+          - "**/*.entitlements"
+          - "**/*.plist"
+      - path: Shared
+        group: Shared
+
+    settings:
+      base:
+        PRODUCT_NAME: BriefWatchWidget
+        PRODUCT_BUNDLE_IDENTIFIER: com.brief.watchapp.widget
+        INFOPLIST_FILE: BriefWatchWidget/Info.plist
+        CODE_SIGN_ENTITLEMENTS: BriefWatchWidget/BriefWatchWidget.entitlements
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
         WATCHOS_DEPLOYMENT_TARGET: "11.0"
       configs:
         debug:
@@ -149,6 +187,7 @@ schemes:
         Brief: all
         BriefWidget: [build]
         BriefWatch: [build]
+        BriefWatchWidget: [build]
     run:
       config: Debug
       commandLineArguments:

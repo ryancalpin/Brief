@@ -4,19 +4,20 @@
 import Foundation
 import Speech
 import AVFoundation
-import Combine
+import Observation
 
+@Observable
 @MainActor
-final class VoiceRecordingService: NSObject, ObservableObject {
+final class VoiceRecordingService: NSObject {
 
-    // MARK: - Published state
+    // MARK: - Observable state
 
-    @Published var isRecording = false
-    @Published var liveTranscript = ""
-    @Published var speechAuthStatus: SFSpeechRecognizerAuthorizationStatus = .notDetermined
-    @Published var micAuthStatus: AVAudioApplication.RecordPermission = .undetermined
-    @Published var audioLevel: Float = 0.0   // 0.0 – 1.0 for waveform UI
-    @Published var error: VoiceRecordingError?
+    var isRecording = false
+    var liveTranscript = ""
+    var speechAuthStatus: SFSpeechRecognizerAuthorizationStatus = .notDetermined
+    var micAuthStatus: AVAudioApplication.RecordPermission = .undetermined
+    var audioLevel: Float = 0.0   // 0.0 – 1.0 for waveform UI
+    var error: VoiceRecordingError?
 
     // MARK: - Private
 

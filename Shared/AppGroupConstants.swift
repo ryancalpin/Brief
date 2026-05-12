@@ -19,8 +19,6 @@ enum AppGroupKey {
     static let recentItems      = "recentItems"       // [SharedBriefItem] encoded JSON
     static let lastUpdated      = "lastUpdated"       // Date
     static let aiProvider       = "aiProvider"        // String
-    static let openAIKey        = "openAIKey"         // String (stored in Keychain in production)
-    static let anthropicKey     = "anthropicKey"      // String
     static let recordingState   = "recordingState"    // Bool
     static let pendingTranscript = "pendingTranscript" // String (Watch → iPhone handoff)
     static let watchLastSync    = "watchLastSync"     // Date
@@ -42,7 +40,7 @@ struct SharedBriefItem: Codable, Identifiable, Sendable {
     var destination: SharedDestination { SharedDestination(rawValue: destinationRaw) ?? .briefOnly }
 
     enum SharedItemType: String, Codable, CaseIterable {
-        case reminder, note, calendarEvent, list, generic
+        case reminder, note, calendarEvent, list, generic, convo
         var systemImage: String {
             switch self {
             case .reminder:      return "checklist"
@@ -50,6 +48,7 @@ struct SharedBriefItem: Codable, Identifiable, Sendable {
             case .calendarEvent: return "calendar"
             case .list:          return "list.bullet"
             case .generic:       return "sparkles"
+            case .convo:         return "bubble.left.and.bubble.right"
             }
         }
     }

@@ -25,11 +25,6 @@ final class SettingsViewModel {
         didSet { save() }
     }
 
-    // Legacy fields retained for backward compatibility with existing data
-    var preferredProvider: AIProviderChoice = .appleIntelligence {
-        didSet { save() }
-    }
-
     // MARK: - Voice Responses
 
     var innerVoiceMode: InnerVoiceMode = .hapticsOnly {
@@ -79,7 +74,6 @@ final class SettingsViewModel {
     // MARK: - Persistence keys
 
     private enum Key {
-        static let preferredProvider  = "settings.preferredProvider"
         static let fastModel          = "settings.fastModel"
         static let deepModel          = "settings.deepModel"
         static let defaultDest        = "settings.defaultDestination"
@@ -106,9 +100,6 @@ final class SettingsViewModel {
         // Load OpenRouter key from Keychain
         openRouterKey = KeychainService.shared.read(key: .openRouterKey) ?? ""
 
-        if let raw = defaults.string(forKey: Key.preferredProvider),
-           let p = AIProviderChoice(rawValue: raw) { preferredProvider = p }
-
         fastModel = defaults.string(forKey: Key.fastModel) ?? "google/gemini-flash-2.5"
         deepModel = defaults.string(forKey: Key.deepModel) ?? "anthropic/claude-sonnet-4-6"
 
@@ -131,7 +122,6 @@ final class SettingsViewModel {
     }
 
     private func save() {
-        defaults.set(preferredProvider.rawValue, forKey: Key.preferredProvider)
         defaults.set(fastModel,                  forKey: Key.fastModel)
         defaults.set(deepModel,                  forKey: Key.deepModel)
         defaults.set(defaultDestination.rawValue, forKey: Key.defaultDest)
@@ -170,13 +160,6 @@ final class SettingsViewModel {
     var isOpenRouterKeyValid: Bool {
         !openRouterKey.isEmpty && openRouterKey.count > 10
     }
-
-    // Legacy validation kept for any remaining references
-    var isOpenAIKeyValid: Bool { false }
-    var isAnthropicKeyValid: Bool { false }
-    var openAIKey: String { "" }
-    var anthropicKey: String { "" }
-    var openAIModel: String { fastModel }
 
     func clearOpenRouterKey() {
         openRouterKey = ""

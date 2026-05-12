@@ -21,10 +21,13 @@ final class KeychainService: Sendable {
     @discardableResult
     func write(key: KeychainKey, value: String) -> Bool {
         let data = Data(value.utf8)
+        // kSecAttrAccessibleAfterFirstUnlock lets AppIntents and background tasks
+        // read the key after the device has been unlocked once since boot.
         let query: [CFString: Any] = [
-            kSecClass:       kSecClassGenericPassword,
-            kSecAttrAccount: key.rawValue,
-            kSecValueData:   data
+            kSecClass:         kSecClassGenericPassword,
+            kSecAttrAccount:   key.rawValue,
+            kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
+            kSecValueData:     data
         ]
         SecItemDelete(query as CFDictionary)
         return SecItemAdd(query as CFDictionary, nil) == errSecSuccess

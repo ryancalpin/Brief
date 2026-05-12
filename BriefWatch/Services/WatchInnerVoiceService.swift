@@ -67,11 +67,4 @@ final class WatchInnerVoiceService {
     }
 }
 
-// InnerVoiceMode is defined in InnerVoiceService.swift (iOS target).
-// For watchOS, we redeclare it here to keep the Watch target self-contained.
-// Both declarations must stay in sync.
-enum InnerVoiceMode: String, CaseIterable, Codable {
-    case hapticsOnly
-    case watchSpeaker
-    case earbuds
-}
+// InnerVoiceMode is defined in Shared/InnerVoiceMode.swift

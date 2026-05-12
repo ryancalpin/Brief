@@ -35,16 +35,28 @@ final class EventKitSyncService {
         }
 
         do {
-            let reminder = EKReminder(eventStore: store)
+            // Reuse existing EKReminder if we've already synced this item;
+            // create a new one otherwise. Prevents duplicate reminders on re-sync.
+            let reminder: EKReminder
+            if let id = item.ekIdentifier,
+               let existing = store.calendarItem(withIdentifier: id) as? EKReminder {
+                reminder = existing
+                reminder.alarms?.forEach { reminder.removeAlarm($0) }
+            } else {
+                reminder = EKReminder(eventStore: store)
+                reminder.calendar = store.defaultCalendarForNewReminders()
+            }
             reminder.title = item.title
             reminder.notes = item.content
-            reminder.calendar = store.defaultCalendarForNewReminders()
+            reminder.isCompleted = item.isCompleted
 
             if let due = item.dueDate {
                 reminder.dueDateComponents = Calendar.current.dateComponents(
                     [.year, .month, .day, .hour, .minute], from: due
                 )
                 reminder.addAlarm(EKAlarm(absoluteDate: due))
+            } else {
+                reminder.dueDateComponents = nil
             }
 
             if let p = item.priority {

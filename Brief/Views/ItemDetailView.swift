@@ -144,7 +144,10 @@ struct ItemDetailView: View {
 
     @ViewBuilder
     private var scheduleSection: some View {
-        if item.dueDate != nil || item.startDate != nil || isEditing {
+        // Reminder/list due dates are rendered by reminderSection — skip them here
+        // to avoid a duplicate "Due Date" picker.
+        let isReminderLike = item.itemType == .reminder || item.itemType == .list
+        if !isReminderLike, item.dueDate != nil || item.startDate != nil || isEditing {
             Section("Schedule") {
                 if item.itemType == .calendarEvent {
                     if isEditing {
@@ -198,12 +201,11 @@ struct ItemDetailView: View {
                     Text(p.displayName).tag(p.rawValue)
                 }
             }
-            // Completion toggle
+            // Completion toggle — binding mutates isCompleted directly,
+            // then onChange runs side effects without re-toggling.
             Toggle("Completed", isOn: $item.isCompleted)
-                .onChange(of: item.isCompleted) { _, completed in
-                    if completed { item.completedAt = Date() }
-                    else         { item.completedAt = nil }
-                    recordingVM.toggleComplete(item)
+                .onChange(of: item.isCompleted) { _, _ in
+                    recordingVM.applyCompletionSideEffects(item)
                 }
         }
     }

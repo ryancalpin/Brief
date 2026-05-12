@@ -24,10 +24,12 @@ final class WatchViewModel: ObservableObject {
     private let connectivity = WatchConnectivityHandler.shared
     private var durationTimer: Timer?
     private var resultCancellable: AnyCancellable?
+    private var transcriptCancellable: AnyCancellable?
 
     // MARK: - Recording
 
     func startRecording() async {
+        guard case .idle = phase else { return }
         await voiceService.requestPermissions()
         guard voiceService.canRecord else {
             phase = .error(WatchVoiceError.permissionDenied)
@@ -38,19 +40,22 @@ final class WatchViewModel: ObservableObject {
             phase = .recording
             duration = 0
             startTimer()
+            // Mirror live transcript via Combine; [weak self] avoids the retain
+            // cycle that .assign(to:on:) would introduce.
+            transcriptCancellable = voiceService.$liveTranscript
+                .sink { [weak self] transcript in
+                    self?.liveTranscript = transcript
+                }
             try await voiceService.startRecording()
-
-            // Mirror live transcript
-            for await _ in AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1)).stream {
-                liveTranscript = voiceService.liveTranscript
-            }
         } catch {
             phase = .error(error)
+            transcriptCancellable = nil
         }
     }
 
     func stopRecording() async {
         stopTimer()
+        transcriptCancellable = nil
         let transcript = await voiceService.stopRecording()
         guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             phase = .idle
@@ -64,6 +69,7 @@ final class WatchViewModel: ObservableObject {
 
     func cancel() async {
         stopTimer()
+        transcriptCancellable = nil
         await voiceService.stopRecording()
         phase = .idle
         liveTranscript = ""

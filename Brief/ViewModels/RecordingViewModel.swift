@@ -64,7 +64,7 @@ final class RecordingViewModel {
     // MARK: - Recording lifecycle
 
     func startRecording() async {
-        guard phase == .idle else { return }
+        guard case .idle = phase else { return }
         await voiceService.requestPermissions()
         guard voiceService.canRecord else {
             phase = .error(VoiceRecordingError.permissionDenied)
@@ -136,7 +136,7 @@ final class RecordingViewModel {
 
             // Step 3: Create BriefItem, set sessionID, save to SwiftData
             let item = result.toBriefItem(rawTranscript: transcript,
-                                          aiProvider: "openrouter")
+                                          aiProvider: aiService.lastProvider)
             item.sessionID = sessionID
             saveLocally(item)
 
@@ -253,10 +253,16 @@ final class RecordingViewModel {
 
     func toggleComplete(_ item: BriefItem) {
         item.isCompleted.toggle()
+        applyCompletionSideEffects(item)
+    }
+
+    // Use this when the Toggle binding has already mutated isCompleted —
+    // it skips the toggle and only runs the side effects (sync, persistence, etc.).
+    func applyCompletionSideEffects(_ item: BriefItem) {
         item.updatedAt = Date()
         if item.isCompleted { item.completedAt = Date() }
         else                { item.completedAt = nil }
-        if let id = item.ekIdentifier, item.ekSyncEnabled {
+        if item.ekIdentifier != nil, item.ekSyncEnabled {
             Task { try? await ekSyncService.complete(item) }
         } else if let id = item.externalIdentifier, item.destination == .reminders {
             Task { try? await eventKitService.completeReminder(identifier: id) }
