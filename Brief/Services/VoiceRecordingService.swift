@@ -8,7 +8,7 @@ import Observation
 
 @Observable
 @MainActor
-final class VoiceRecordingService: NSObject {
+final class VoiceRecordingService: NSObject, @unchecked Sendable {
 
     // MARK: - Observable state
 

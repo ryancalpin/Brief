@@ -59,14 +59,9 @@ struct HomeView: View {
             .tabItem { Label("Convo", systemImage: "bubble.left.and.bubble.right") }
             .tag(1)
 
-            // MARK: Memory tab (v1.1 stub)
+            // MARK: Memory tab (v1.1 — coming soon)
             NavigationStack {
-                EmptyStateView(
-                    systemImage: "brain",
-                    title: "Memory",
-                    description: "Memory builds as you capture. Coming in a future update — Brief will help you recall anything you've said."
-                )
-                .navigationTitle("Memory")
+                MemoryComingSoonView()
             }
             .tabItem { Label("Memory", systemImage: "brain") }
             .tag(2)
@@ -338,5 +333,88 @@ struct FilterChip: View {
         }
         .buttonStyle(.plain)
         .animation(.spring(duration: 0.2), value: isSelected)
+    }
+}
+
+// MARK: - Memory Coming Soon (v1.1)
+
+/// Polished coming-soon card for the Memory tab.
+/// Spec: Memory will provide semantic search across all captures using
+/// on-device vector embeddings. Target: v1.1.
+struct MemoryComingSoonView: View {
+    @State private var animateGradient = false
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 28) {
+                Spacer().frame(height: 60)
+
+                // Animated neural icon
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.purple, .blue, .purple],
+                                startPoint: animateGradient ? .topLeading : .bottomTrailing,
+                                endPoint: animateGradient ? .bottomTrailing : .topLeading
+                            )
+                        )
+                        .frame(width: 120, height: 120)
+                        .blur(radius: 20)
+                        .opacity(0.3)
+
+                    Image(systemName: "brain.head.profile")
+                        .font(.system(size: 64))
+                        .foregroundStyle(.purple)
+                        .symbolEffect(.pulse, options: .repeating.speed(0.5))
+                }
+
+                VStack(spacing: 8) {
+                    Text("Memory")
+                        .font(.largeTitle.bold())
+                    Text("Coming in v1.1")
+                        .font(.title3)
+                        .foregroundStyle(.purple)
+                }
+
+                VStack(alignment: .leading, spacing: 16) {
+                    featureRow(icon: "magnifyingglass", text: "Semantic search across all your captures")
+                    featureRow(icon: "brain", text: "On-device vector embeddings for privacy")
+                    featureRow(icon: "clock.arrow.2.circlepath", text: "Recall anything you've ever said to Brief")
+                    featureRow(icon: "sparkles", text: "AI-powered summaries and connections")
+                }
+                .padding(.horizontal, 32)
+                .padding(.top, 8)
+
+                VStack(spacing: 4) {
+                    Text("Every capture you make now")
+                        .foregroundStyle(.secondary)
+                    Text("builds your future Memory.")
+                        .foregroundStyle(.secondary)
+                }
+                .font(.subheadline)
+                .padding(.top, 8)
+
+                Spacer()
+            }
+        }
+        .navigationTitle("Memory")
+        .onAppear {
+            withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
+                animateGradient = true
+            }
+        }
+    }
+
+    private func featureRow(icon: String, text: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .frame(width: 24)
+                .foregroundStyle(.purple)
+            Text(text)
+                .font(.body)
+                .foregroundStyle(.primary)
+            Spacer()
+        }
     }
 }

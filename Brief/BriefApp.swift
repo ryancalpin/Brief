@@ -23,7 +23,24 @@ struct BriefApp: App {
                 configurations: [config]
             )
         } catch {
-            fatalError("Brief: Failed to create ModelContainer: \(error)")
+            // Fall back to in-memory store if persistent store fails.
+            // On first launch after iCloud switch or during data corruption
+            // recovery, this prevents a crash and lets the user continue.
+            let memoryConfig = ModelConfiguration(
+                schema: schema,
+                isStoredInMemoryOnly: true
+            )
+            guard let container = try? ModelContainer(
+                for: schema,
+                migrationPlan: BriefMigrationPlan.self,
+                configurations: [memoryConfig]
+            ) else {
+                // Absolute last resort — can't even create in-memory store.
+                // This should never happen in practice.
+                let errSchema = Schema([BriefItem.self])
+                return try! ModelContainer(for: errSchema)
+            }
+            return container
         }
     }()
 

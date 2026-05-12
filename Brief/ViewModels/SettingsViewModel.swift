@@ -6,7 +6,7 @@ import Observation
 
 @Observable
 @MainActor
-final class SettingsViewModel {
+final class SettingsViewModel: @unchecked Sendable {
 
     static let shared = SettingsViewModel()
 

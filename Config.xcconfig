@@ -1,0 +1,17 @@
+// Config.xcconfig
+// Build-time configuration for Brief.
+// Values here override project.yml defaults — use for CI, TestFlight, or App Store builds.
+//
+// Usage:
+//   xcodebuild -xcconfig Config.xcconfig ...
+//   Or reference in project.yml via configFiles (see project.yml).
+
+// ─── API Gateway ─────────────────────────────────────────────────────────
+// App Store / TestFlight builds: set to your managed gateway URL.
+// Example: API_GATEWAY_URL = https:/$()/api.brief.app/v1
+// Open source / BYOK builds: leave empty (defaults to user's OpenRouter key).
+API_GATEWAY_URL =
+
+// ─── Build Metadata ──────────────────────────────────────────────────────
+MARKETING_VERSION = 1.0
+CURRENT_PROJECT_VERSION = 1

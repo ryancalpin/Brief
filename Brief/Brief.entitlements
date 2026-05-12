@@ -1,29 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict>
-    <!-- App Groups: shared UserDefaults/files with Widget and Watch -->
-    <key>com.apple.security.application-groups</key>
-    <array>
-        <string>group.com.brief.app</string>
-    </array>
-
-    <!-- Siri / App Intents -->
-    <key>com.apple.developer.siri</key>
-    <true/>
-
-    <!-- iCloud / CloudKit for SwiftData sync -->
-    <key>com.apple.developer.icloud-services</key>
-    <array>
-        <string>CloudKit</string>
-    </array>
-    <key>com.apple.developer.icloud-container-identifiers</key>
-    <array>
-        <string>iCloud.com.brief.app</string>
-    </array>
-
-    <!-- Live Activities / ActivityKit -->
-    <key>com.apple.developer.activitykit.push</key>
-    <false/>
-</dict>
+<dict/>
 </plist>

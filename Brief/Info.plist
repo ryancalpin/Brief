@@ -2,99 +2,23 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Bundle Info -->
-    <key>CFBundleDisplayName</key>
-    <string>Brief</string>
-    <key>CFBundleIdentifier</key>
-    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-    <key>CFBundleVersion</key>
-    <string>$(CURRENT_PROJECT_VERSION)</string>
-    <key>CFBundleShortVersionString</key>
-    <string>$(MARKETING_VERSION)</string>
-
-    <!-- Privacy Usage Descriptions -->
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Brief needs microphone access to record your voice and create notes, reminders, and calendar events.</string>
-
-    <key>NSSpeechRecognitionUsageDescription</key>
-    <string>Brief uses speech recognition to transcribe your voice into notes and reminders.</string>
-
-    <key>NSRemindersUsageDescription</key>
-    <string>Brief can automatically add reminders to Apple Reminders based on your voice input.</string>
-
-    <key>NSCalendarsFullAccessUsageDescription</key>
-    <string>Brief can create calendar events in Apple Calendar from your voice input.</string>
-
-    <!-- Background Modes: audio for voice recording, processing for background tasks -->
-    <key>UIBackgroundModes</key>
-    <array>
-        <string>audio</string>
-        <string>processing</string>
-    </array>
-
-    <!-- Background Processing Task IDs -->
-    <key>BGTaskSchedulerPermittedIdentifiers</key>
-    <array>
-        <string>com.brief.app.sync</string>
-    </array>
-
-    <!-- Live Activities -->
-    <key>NSSupportsLiveActivities</key>
-    <true/>
-    <key>NSSupportsLiveActivitiesFrequentUpdates</key>
-    <true/>
-
-    <!-- URL Schemes for deep linking and widget taps -->
-    <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleURLName</key>
-            <string>com.brief.app</string>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>brief</string>
-            </array>
-        </dict>
-    </array>
-
-    <!-- Siri / App Intents -->
-    <key>NSUserActivityTypes</key>
-    <array>
-        <string>RecordBriefIntent</string>
-        <string>QuickAddBriefIntent</string>
-        <string>CreateReminderIntent</string>
-        <string>ViewBriefItemsIntent</string>
-    </array>
-
-    <!-- UI -->
-    <key>UILaunchScreen</key>
-    <dict>
-        <key>UIColorName</key>
-        <string>LaunchBackground</string>
-        <key>UIImageName</key>
-        <string>LaunchLogo</string>
-    </dict>
-    <key>UIApplicationSceneManifest</key>
-    <dict>
-        <key>UIApplicationSupportsMultipleScenes</key>
-        <false/>
-        <key>UISceneConfigurations</key>
-        <dict/>
-    </dict>
-
-    <!-- Required device capabilities -->
-    <key>UIRequiredDeviceCapabilities</key>
-    <array>
-        <string>arm64</string>
-        <string>microphone</string>
-    </array>
-
-    <!-- Supported interface orientations -->
-    <key>UISupportedInterfaceOrientations</key>
-    <array>
-        <string>UIInterfaceOrientationPortrait</string>
-        <string>UIInterfaceOrientationLandscapeLeft</string>
-        <string>UIInterfaceOrientationLandscapeRight</string>
-    </array>
+	<key>API_GATEWAY_URL</key>
+	<string>$(API_GATEWAY_URL)</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
 </dict>
 </plist>

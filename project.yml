@@ -13,6 +13,10 @@ options:
   createIntermediateGroups: true
   groupSortPosition: top
   generateEmptyDirectories: true
+  defaultConfig: Debug
+  configs:
+    Debug: debug
+    Release: release
 
 # ─── Settings ───────────────────────────────────────────────────────────────
 
@@ -25,10 +29,12 @@ settings:
     DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
     SWIFT_COMPILATION_MODE: wholemodule
     ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
-    API_GATEWAY_URL: ""          # empty = BYOK/open source mode
+    API_GATEWAY_URL: ""          # Override in Config.xcconfig for App Store builds
   configs:
-    Release-AppStore:
-      API_GATEWAY_URL: "https://api.brief.app/v1"   # placeholder — set real URL before shipping
+    Debug:
+      API_GATEWAY_URL: ""
+    Release:
+      API_GATEWAY_URL: ""
 
 # ─── Targets ─────────────────────────────────────────────────────────────────
 
@@ -40,7 +46,8 @@ targets:
     platform: iOS
     deploymentTarget: "18.0"
     bundleId: com.brief.app
-    entitlements: Brief/Brief.entitlements
+    entitlements:
+      path: Brief/Brief.entitlements
     info:
       path: Brief/Info.plist
       properties:
@@ -74,6 +81,7 @@ targets:
         debug:
           SWIFT_OPTIMIZATION_LEVEL: "-Onone"
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG"
+          ENABLE_TESTABILITY: YES
         release:
           SWIFT_OPTIMIZATION_LEVEL: "-O"
 
@@ -83,7 +91,8 @@ targets:
     platform: iOS
     deploymentTarget: "18.0"
     bundleId: com.brief.app.widget
-    entitlements: BriefWidget/BriefWidget.entitlements
+    entitlements:
+      path: BriefWidget/BriefWidget.entitlements
     info:
       path: BriefWidget/Info.plist
 
@@ -115,7 +124,8 @@ targets:
     platform: watchOS
     deploymentTarget: "11.0"
     bundleId: com.brief.watchapp
-    entitlements: BriefWatch/BriefWatch.entitlements
+    entitlements:
+      path: BriefWatch/BriefWatch.entitlements
     info:
       path: BriefWatch/Info.plist
 
@@ -151,7 +161,8 @@ targets:
     platform: watchOS
     deploymentTarget: "11.0"
     bundleId: com.brief.watchapp.widget
-    entitlements: BriefWatchWidget/BriefWatchWidget.entitlements
+    entitlements:
+      path: BriefWatchWidget/BriefWatchWidget.entitlements
     info:
       path: BriefWatchWidget/Info.plist
 
@@ -192,26 +203,22 @@ schemes:
       config: Debug
       commandLineArguments:
         "-com.apple.CoreData.CloudKitDebug": "0"
-    test:
-      config: Debug
-      targets:
-        - BriefTests
     profile:
       config: Release
     archive:
       config: Release
 
-# ─── Test Target (optional) ──────────────────────────────────────────────────
-# Uncomment to add unit tests
-# BriefTests:
-#   type: bundle.unit-test
-#   platform: iOS
-#   deploymentTarget: "18.0"
-#   bundleId: com.brief.app.tests
-#   sources:
-#     - path: BriefTests
-#   dependencies:
-#     - target: Brief
-#   settings:
-#     base:
-#       TEST_HOST: $(BUILT_PRODUCTS_DIR)/Brief.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Brief
+# ─── Test Target ──────────────────────────────────────────────────────────────
+
+BriefTests:
+  type: bundle.unit-test
+  platform: iOS
+  deploymentTarget: "18.0"
+  bundleId: com.brief.app.tests
+  sources:
+    - path: BriefTests
+  dependencies:
+    - target: Brief
+  settings:
+    base:
+      TEST_HOST: $(BUILT_PRODUCTS_DIR)/Brief.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Brief

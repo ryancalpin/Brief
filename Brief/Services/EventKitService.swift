@@ -7,7 +7,7 @@ import Observation
 
 @Observable
 @MainActor
-final class EventKitService {
+final class EventKitService: @unchecked Sendable {
 
     var remindersAuthStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .reminder)
     var calendarAuthStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)

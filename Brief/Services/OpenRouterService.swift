@@ -1,11 +1,15 @@
 // OpenRouterService.swift
-// All AI API calls go through this service via APIGatewayService
+// All AI API calls go through this service via APIGatewayService.
+// Model strings are pulled from SettingsViewModel so users can configure them.
 
 import Foundation
 
 final class OpenRouterService: Sendable {
 
     static let shared = OpenRouterService()
+
+    // User-configurable defaults — SettingsViewModel persists these.
+    // These are just the factory defaults; actual values come from Settings.
     static let defaultFastModel = "google/gemini-flash-2.5"
     static let defaultDeepModel = "anthropic/claude-sonnet-4-6"
 
@@ -18,13 +22,25 @@ final class OpenRouterService: Sendable {
         (try? gateway.requestConfig()) != nil
     }
 
+    // MARK: - Active models (from settings, with fallback to defaults)
+
+    var fastModel: String {
+        let settings = SettingsViewModel.shared
+        return settings.fastModel.isEmpty ? Self.defaultFastModel : settings.fastModel
+    }
+
+    var deepModel: String {
+        let settings = SettingsViewModel.shared
+        return settings.deepModel.isEmpty ? Self.defaultDeepModel : settings.deepModel
+    }
+
     // MARK: - Parse
 
     // One-shot parse: transcript → AIParseResult
     // Returns JSON only. Strips markdown fences before parsing.
     func parse(
         transcript: String,
-        model: String = defaultFastModel
+        model: String? = nil
     ) async throws -> AIParseResult {
         let config = try gateway.requestConfig()
         let url = URL(string: "\(config.baseURL)/chat/completions")!
@@ -34,8 +50,9 @@ final class OpenRouterService: Sendable {
         request.timeoutInterval = 30
         config.headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
 
+        let selectedModel = model ?? fastModel
         let body: [String: Any] = [
-            "model": model,
+            "model": selectedModel,
             "messages": [
                 ["role": "system", "content": AIParseResult.systemPrompt()],
                 ["role": "user",   "content": transcript]
@@ -59,13 +76,12 @@ final class OpenRouterService: Sendable {
         return try JSONDecoder().decode(AIParseResult.self, from: jsonData)
     }
 
-    // MARK: - Converse
+    // MARK: - Converse (multi-turn)
 
-    // Multi-turn conversation
     func converse(
         history: [ConvoMessage],
         newMessage: String,
-        model: String = defaultFastModel
+        model: String? = nil
     ) async throws -> String {
         let config = try gateway.requestConfig()
         let url = URL(string: "\(config.baseURL)/chat/completions")!
@@ -76,16 +92,19 @@ final class OpenRouterService: Sendable {
         config.headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
 
         var messages: [[String: String]] = [
-            ["role": "system", "content": Self.conversationSystemPrompt]
+            ["role": "system", "content": systemPrompt(history: history)]
         ]
-        messages += history.map { ["role": $0.role, "content": $0.content] }
+        for msg in history {
+            messages.append(["role": msg.role, "content": msg.content])
+        }
         messages.append(["role": "user", "content": newMessage])
 
+        let selectedModel = model ?? fastModel
         let body: [String: Any] = [
-            "model": model,
+            "model": selectedModel,
             "messages": messages,
-            "temperature": 0.7,
-            "max_tokens": 300
+            "temperature": 0.5,
+            "max_tokens": 500
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -93,53 +112,56 @@ final class OpenRouterService: Sendable {
         try validate(response, data: data)
 
         let completion = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
-        return completion.choices.first?.message.content ?? ""
+        guard let content = completion.choices.first?.message.content else {
+            throw OpenRouterError.emptyResponse
+        }
+        return content
     }
 
     // MARK: - Helpers
 
     private func validate(_ response: URLResponse, data: Data) throws {
-        guard let http = response as? HTTPURLResponse else {
-            throw OpenRouterError.network("Invalid response type")
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenRouterError.noResponse
         }
-        guard (200..<300).contains(http.statusCode) else {
+        guard 200...299 ~= httpResponse.statusCode else {
             let body = String(data: data, encoding: .utf8) ?? ""
-            throw OpenRouterError.api(http.statusCode, body)
+            throw OpenRouterError.httpError(httpResponse.statusCode, body)
         }
     }
 
     private func stripFences(_ text: String) -> String {
-        var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if result.hasPrefix("```json") { result = String(result.dropFirst(7)) }
-        else if result.hasPrefix("```") { result = String(result.dropFirst(3)) }
-        if result.hasSuffix("```") { result = String(result.dropLast(3)) }
-        if let start = result.firstIndex(of: "{"), let end = result.lastIndex(of: "}") {
-            return String(result[start...end])
+        var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.hasPrefix("```") {
+            t = String(t.dropFirst(3))
+            if t.hasPrefix("json") { t = String(t.dropFirst(4)) }
+            t = t.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.hasSuffix("```") {
+            t = String(t.dropLast(3))
+            t = t.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return t
     }
 
-    private static let conversationSystemPrompt = """
-    You are Brief, a private ambient AI assistant on iPhone and Apple Watch.
-    Help the user capture thoughts, manage tasks, and think through ideas.
-    Be concise — responses should be 1-3 sentences unless the user asks
-    for more detail. Respond conversationally. You have no persistent
-    memory in this version.
-    """
+    private func systemPrompt(history: [ConvoMessage]) -> String {
+        """
+        You are Brief, a voice-first personal assistant. Keep responses conversational and brief (1-2 sentences max). You have access to the conversation history for context. Be helpful, warm, and concise.
+        """
+    }
 }
 
-// MARK: - Supporting types
+// MARK: - Types
 
-struct ConvoMessage: Codable, Sendable {
-    var role: String    // "user" or "assistant"
-    var content: String
+struct ConvoMessage: Codable {
+    let role: String  // "user" or "assistant"
+    let content: String
 }
 
-private struct ChatCompletionResponse: Decodable {
-    struct Choice: Decodable {
-        struct Message: Decodable {
-            let role: String
-            let content: String
+struct ChatCompletionResponse: Codable {
+    struct Choice: Codable {
+        struct Message: Codable {
+            let content: String?
         }
         let message: Message
     }
@@ -147,17 +169,24 @@ private struct ChatCompletionResponse: Decodable {
 }
 
 enum OpenRouterError: LocalizedError {
-    case network(String)
-    case api(Int, String)
+    case notConfigured
+    case noResponse
+    case httpError(Int, String)
     case emptyResponse
     case invalidJSON
 
     var errorDescription: String? {
         switch self {
-        case .network(let msg):        return "Network error: \(msg)"
-        case .api(let code, let body): return "API error \(code): \(body.prefix(200))"
-        case .emptyResponse:           return "The AI returned an empty response."
-        case .invalidJSON:             return "The AI returned an unexpected format."
+        case .notConfigured:
+            return "OpenRouter is not configured. Add an API key in Settings."
+        case .noResponse:
+            return "No response from AI service. Check your network connection."
+        case .httpError(let code, let body):
+            return "AI service returned \\(code): \\(body.prefix(200))"
+        case .emptyResponse:
+            return "AI returned an empty response."
+        case .invalidJSON:
+            return "AI response was not valid JSON."
         }
     }
 }

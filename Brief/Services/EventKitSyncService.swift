@@ -7,7 +7,7 @@ import SwiftData
 
 @Observable
 @MainActor
-final class EventKitSyncService {
+final class EventKitSyncService: @unchecked Sendable {
 
     private let store = EKEventStore()
 

@@ -9,7 +9,7 @@ import Observation
 
 @Observable
 @MainActor
-final class InnerVoiceService: NSObject {
+final class InnerVoiceService: NSObject, @unchecked Sendable {
 
     static let shared = InnerVoiceService()
 

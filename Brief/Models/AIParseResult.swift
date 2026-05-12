@@ -44,12 +44,14 @@ struct AIParseResult: Codable, Sendable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+
+        // Decode each field with clear fallbacks, but validate critical fields
         itemType         = (try? c.decode(BriefItemType.self, forKey: .itemType)) ?? .generic
-        title            = (try? c.decode(String.self,        forKey: .title))    ?? ""
+        title            = (try? c.decode(String.self,        forKey: .title)) ?? ""
         body             = try? c.decode(String.self,         forKey: .body)
         aiResponse       = try? c.decode(String.self,         forKey: .aiResponse)
         priority         = (try? c.decode(Int.self,           forKey: .priority)) ?? 0
-        tags             = (try? c.decode([String].self,      forKey: .tags))     ?? []
+        tags             = (try? c.decode([String].self,      forKey: .tags)) ?? []
         sessionID        = try? c.decode(UUID.self,           forKey: .sessionID)
         isConversational = (try? c.decode(Bool.self,          forKey: .isConversational)) ?? false
 
@@ -58,6 +60,16 @@ struct AIParseResult: Codable, Sendable {
             dueDate = Self.parseISO(iso)
         } else {
             dueDate = try? c.decode(Date.self, forKey: .dueDate)
+        }
+
+        // Validate: title must be non-empty after decoding
+        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: c.codingPath + [CodingKeys.title],
+                    debugDescription: "AIParseResult.title must not be empty after decoding"
+                )
+            )
         }
     }
 
@@ -110,80 +122,50 @@ extension AIParseResult {
             }
         }()
 
-        let briefPriority: BriefPriority? = {
+        let pri: BriefPriority? = {
             switch priority {
-            case 1: return .low
-            case 2: return .medium
             case 3: return .high
+            case 2: return .medium
+            case 1: return .low
             default: return nil
             }
         }()
 
-        let item = BriefItem(
+        return BriefItem(
             rawTranscript: rawTranscript,
             title: title,
             content: body,
-            itemType: isConversational ? .convo : itemType,
+            itemType: itemType,
             destination: destination,
             dueDate: dueDate,
-            priority: briefPriority,
-            startDate: nil,
-            endDate: nil,
+            priority: pri,
+            startDate: itemType == .calendarEvent ? dueDate : nil,
+            endDate: itemType == .calendarEvent && dueDate != nil
+                ? Calendar.current.date(byAdding: .hour, value: 1, to: dueDate!) : nil,
             location: nil,
             tags: tags
         )
-        item.aiProviderUsed   = aiProvider
-        item.isProcessed      = true
-        item.aiResponse       = aiResponse
-        item.sessionID        = sessionID
-        item.isConversational = isConversational
-        return item
     }
-}
 
-// MARK: - System prompt
+    // MARK: - System prompt (shared across all AI providers)
 
-extension AIParseResult {
-    static func systemPrompt(currentDate: Date = .now, timezone: TimeZone = .current) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .full
-        formatter.timeStyle = .short
-        formatter.timeZone = timezone
-        let dateString = formatter.string(from: currentDate)
-        let tzName = timezone.identifier
-
+    static func systemPrompt() -> String {
+        let now = ISO8601DateFormatter().string(from: Date())
         return """
-        You are Brief, a voice-first ambient AI assistant on iPhone and Apple Watch.
-        Help the user capture thoughts, manage tasks, and think through ideas.
+        You are a voice-input parser assistant. Convert the user's spoken input into a structured JSON object with these fields:
+        - itemType: "reminder" | "note" | "calendarEvent" | "list" | "generic" | "convo"
+        - title: Short actionable summary (max 80 chars)
+        - body: Additional context or details (optional)
+        - aiResponse: Conversational reply if this is a conversation (optional)
+        - dueDate: ISO 8601 date string if a date/time was mentioned (optional)
+        - priority: 0 (none), 1 (low), 2 (medium), 3 (high)
+        - tags: Array of relevant keyword strings (optional)
+        - isConversational: true if this is casual conversation, not an action item
+        - sessionID: UUID if continuing an existing session (optional)
 
-        Current date/time: \(dateString) (\(tzName))
+        Current time is \(now). Use it to calculate relative dates (tomorrow, next week, etc).
 
-        Parse the user's voice input and return ONLY valid JSON matching this exact schema:
-        {
-          "itemType": "reminder" | "note" | "calendarEvent" | "list" | "convo" | "generic",
-          "title": "concise title (max 80 chars)",
-          "body": "full text or null",
-          "aiResponse": "1-3 sentence conversational reply or null",
-          "dueDate": "ISO 8601 or null",
-          "priority": 0 | 1 | 2 | 3,
-          "tags": ["tag1", "tag2"],
-          "isConversational": true | false
-        }
-
-        Priority scale: 0=none, 1=low, 2=medium, 3=high
-
-        Rules:
-        - "remind me to", "don't forget to", "I need to" → reminder
-        - "note that", "remember that", "write down", "jot down" → note
-        - "schedule", "add to calendar", "meeting", "appointment" + date/time → calendarEvent
-        - "shopping list", "grocery list", "todo list" → list
-        - Questions, thoughts, ideas, "what do you think", chat → convo + isConversational: true
-        - Urgent signals ("ASAP", "urgent", "immediately") → priority: 3
-        - Parse relative dates: "tomorrow", "next Monday", "in 3 hours", "this weekend"
-        - All dates in ISO 8601 in the user's timezone
-        - For convo items: aiResponse should be a helpful 1-3 sentence reply
-        - Keep title concise; put details in body
-        - Return ONLY the JSON object, no markdown fences, no explanation
+        Respond with ONLY the JSON object. No markdown, no explanation, no code fences.
         """
     }
 }

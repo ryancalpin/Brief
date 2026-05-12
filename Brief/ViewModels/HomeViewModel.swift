@@ -23,7 +23,7 @@ enum SortOrder: String, CaseIterable {
 
 @Observable
 @MainActor
-final class HomeViewModel {
+final class HomeViewModel: @unchecked Sendable {
 
     // MARK: - Filter / Search state
 

@@ -7,7 +7,7 @@ import Observation
 
 @Observable
 @MainActor
-final class WatchConnectivityService: NSObject, WCSessionDelegate {
+final class WatchConnectivityService: NSObject, WCSessionDelegate, @unchecked Sendable {
 
     static let shared = WatchConnectivityService()
 
