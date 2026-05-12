@@ -1,0 +1,123 @@
+name: Brief
+options:
+  bundleIdPrefix: com.brief
+  deploymentTarget:
+    iOS: '18.0'
+    watchOS: '11.0'
+  xcodeVersion: '16.0'
+  createIntermediateGroups: true
+  groupSortPosition: top
+  generateEmptyDirectories: true
+  defaultConfig: Debug
+  configs:
+    Debug: debug
+    Release: release
+settings:
+  base:
+    MARKETING_VERSION: '1.0'
+    CURRENT_PROJECT_VERSION: '1'
+    SWIFT_VERSION: '6.0'
+    ENABLE_BITCODE: false
+    DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+    SWIFT_COMPILATION_MODE: wholemodule
+    ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: true
+    API_GATEWAY_URL: ''
+  configs:
+    Debug:
+      API_GATEWAY_URL: ''
+    Release:
+      API_GATEWAY_URL: ''
+targets:
+  Brief:
+    type: application
+    platform: iOS
+    deploymentTarget: '18.0'
+    bundleId: com.ryancalpin.brief
+    entitlements:
+      path: Brief/Brief.entitlements
+    info:
+      path: Brief/Info.plist
+      properties:
+        API_GATEWAY_URL: $(API_GATEWAY_URL)
+    sources:
+    - path: Brief
+      excludes:
+      - '**/*.entitlements'
+      - '**/*.plist'
+    - path: Shared
+      group: Shared
+    dependencies:
+    - target: BriefWidget
+      embed: true
+      codeSign: true
+    settings:
+      base:
+        PRODUCT_NAME: Brief
+        PRODUCT_BUNDLE_IDENTIFIER: com.ryancalpin.brief
+        INFOPLIST_FILE: Brief/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Brief/Brief.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        FRAMEWORK_SEARCH_PATHS: $(inherited)
+      configs:
+        debug:
+          SWIFT_OPTIMIZATION_LEVEL: -Onone
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+          ENABLE_TESTABILITY: true
+        release:
+          SWIFT_OPTIMIZATION_LEVEL: -O
+  BriefWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: '18.0'
+    bundleId: com.ryancalpin.brief.widget
+    entitlements:
+      path: BriefWidget/BriefWidget.entitlements
+    info:
+      path: BriefWidget/Info.plist
+    sources:
+    - path: BriefWidget
+      excludes:
+      - '**/*.entitlements'
+      - '**/*.plist'
+    - path: Shared
+      group: Shared
+    settings:
+      base:
+        PRODUCT_NAME: BriefWidget
+        PRODUCT_BUNDLE_IDENTIFIER: com.ryancalpin.brief.widget
+        INFOPLIST_FILE: BriefWidget/Info.plist
+        CODE_SIGN_ENTITLEMENTS: BriefWidget/BriefWidget.entitlements
+        SKIP_INSTALL: true
+        APPLICATION_EXTENSION_API_ONLY: true
+      configs:
+        debug:
+          SWIFT_OPTIMIZATION_LEVEL: -Onone
+        release:
+          SWIFT_OPTIMIZATION_LEVEL: -O
+schemes:
+  Brief:
+    build:
+      targets:
+        Brief: all
+        BriefWidget:
+        - build
+    run:
+      config: Debug
+      commandLineArguments:
+        -com.apple.CoreData.CloudKitDebug: '0'
+    profile:
+      config: Release
+    archive:
+      config: Release
+BriefTests:
+  type: bundle.unit-test
+  platform: iOS
+  deploymentTarget: '18.0'
+  bundleId: com.ryancalpin.brief.tests
+  sources:
+  - path: BriefTests
+  dependencies:
+  - target: Brief
+  settings:
+    base:
+      TEST_HOST: $(BUILT_PRODUCTS_DIR)/Brief.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Brief
